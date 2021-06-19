@@ -17,6 +17,7 @@ function Enable-DVHyperV {
     $answer = Read-Host -Prompt 'Your system may reboot. Continue? (Y / N)'
 
     if ($answer.ToUpper() -eq "Y") {
+        
         Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All     
     }
 }
@@ -44,7 +45,8 @@ function Get-DVisCurrentUserMemberOfHyperVGroup {
 }
 
 function Add-DVHyperVGroupToCurrentUser {
-    Add-LocalGroupMember -Group "Administrators" -Member "domain\user or group," "additional users or groups."
+    $hyperVGroupName = Get-DVHyperVLocalGroupName
+    Add-LocalGroupMember -Group $hyperVGroupName -Member $env:USERNAME
 }
 
 function Test-DVAdministrator {  
