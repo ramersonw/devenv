@@ -20,6 +20,9 @@ function Enable-DVHyperV {
         Add-DVHyperVGroupToCurrentUser
         Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All     
     }
+    else {
+        Exit 0
+    }
 }
 function Get-DVHyperVLocalGroupName {
     <#
@@ -56,12 +59,42 @@ function Test-DVAdministrator {
     (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)  
 }
 
+function Initialize-DVFolders {
+    New-Item -Path "$root" -Name ".devenv" -ItemType "directory" -Force
+    New-Item -Path "$fullPath" -Name "bin\packer" -ItemType "directory" -Force
+    New-Item -Path "$fullPath" -Name "vm\template" -ItemType "directory" -Force
+    New-Item -Path "$fullPath" -Name "vm\base" -ItemType "directory" -Force
+    New-Item -Path "$fullPath" -Name "temp" -ItemType "directory" -Force
+}
+
+function Get-DVPacker {
+    $PackerRootUrl = 'https://releases.hashicorp.com/packer/'
+    $Html = Invoke-RestMethod $PackerRootUrl
+    $Pattern = '<a href="/packer/(?<version>.*)/">'
+    $Html -match $Pattern
+    $PackerUrl = $PackerRootUrl + $Matches.version + '/packer_' + $Matches.version + '_windows_amd64.zip'
+
+    $destination = $fullPath + "\temp\packer.zip"
+    Start-BitsTransfer -Source $PackerUrl -Destination $destination
+
+    $destinationPath = $fullPath + "\bin\packer"
+    Expand-Archive -Path $destination -DestinationPath $destinationPath
+    Remove-Item -Path $destination -Force
+}
+
+
+$root = $env:USERPROFILE
+$fullPath = $root + "\.devenv"
+
 if ((Get-DVisHyperVAvailable) -ne $true) {
     if ((Test-DVAdministrator) -eq $true) {
         Enable-DVHyperV   
     }
 
     Write-Output 'This script needs to run as administrator to enable Hyper-V features'
-    Exit-PSHostProcess
+    Exit 0
 }
+
+Initialize-DVFolders
+Get-DVPacker
 
