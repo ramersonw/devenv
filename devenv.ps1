@@ -1,27 +1,63 @@
-﻿function Get-DVisHyperVAvailable {
+$ErrorActionPreference = "Stop"
+
+function Get-DVisHyperVAvailable {
+
     $result = $false
     try {
         Get-VM | Out-Null
         $result = $true
-    } catch {
+    }
+    catch {
     }
 
     return $result
 }
+function Enable-DVHyperV {
+    Write-Output 'This script will enable Hyper-V features'
+    $answer = Read-Host -Prompt 'Your system may reboot. Continue? (Y / N)'
 
-$isHyperVAvailable = Get-DVisHyperVAvailable
-
-
-if ($isHyperVAvailable -ne $true) {
-    Write-Output 'O Hyper-V não está habilitado no seu sistema.'
-    Write-Output 'Execute o script (como administrador) usando o parâmetro "--enable-Hyper-V" para habilitar o Hyper-V'
-    Write-Output 'O sistema será reiniciado em seguida.'
-    #Get-WindowsOptionalFeature -Online -FeatureName *hyper*
-
-    #$Server = Read-Host -Prompt 'Input your server  name'
-    #$User = Read-Host -Prompt 'Input the user name'
-    #$Date = Get-Date
-    #Write-Host "You input server '$Servers' and '$User' on '$Date'"
-} else {
-    Write-Output "outro"
+    if ($answer.ToUpper() -eq "Y") {
+        Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All     
+    }
 }
+function Get-DVHyperVLocalGroupName {
+    <#
+        .NOTES
+            Returns an empty string if Hyper-V group was not found.
+    #>
+
+    $hyperVGroup = Get-LocalGroup | Select-String -Pattern 'Hyper' | Out-String
+
+    return $hyperVGroup.Trim()
+}
+
+function Get-DVisCurrentUserMemberOfHyperVGroup {
+    <#
+        .NOTES
+            Returns an empty string if current user is not member of Hyper-V group.
+    #>
+
+    $group = [System.Security.Principal.WindowsIdentity]::GetCurrent().Groups | ForEach-Object { $_.Translate([Security.Principal.NTAccount]) }
+    $filter = $group | Select-String -Pattern 'Hyper' | Out-String
+
+    return ( $filter.Trim() -ne "")
+}
+
+function Add-DVHyperVGroupToCurrentUser {
+    Add-LocalGroupMember -Group "Administrators" -Member "domain\user or group," "additional users or groups."
+}
+
+function Test-DVAdministrator {  
+    $user = [Security.Principal.WindowsIdentity]::GetCurrent();
+    (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)  
+}
+
+if ((Get-DVisHyperVAvailable) -ne $true) {
+    if ((Test-DVAdministrator) -eq $true) {
+        Enable-DVHyperV   
+    }
+
+    Write-Output 'This script needs to run as administrator to enable Hyper-V features'
+    Exit-PSHostProcess
+}
+
