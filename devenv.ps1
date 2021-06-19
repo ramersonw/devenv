@@ -17,7 +17,7 @@ function Enable-DVHyperV {
     $answer = Read-Host -Prompt 'Your system may reboot. Continue? (Y / N)'
 
     if ($answer.ToUpper() -eq "Y") {
-        
+        Add-DVHyperVGroupToCurrentUser
         Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All     
     }
 }
@@ -38,15 +38,17 @@ function Get-DVisCurrentUserMemberOfHyperVGroup {
             Returns an empty string if current user is not member of Hyper-V group.
     #>
 
-    $group = [System.Security.Principal.WindowsIdentity]::GetCurrent().Groups | ForEach-Object { $_.Translate([Security.Principal.NTAccount]) }
+    $group = Get-LocalGroup | Where-Object { (Get-LocalGroupMember $_).name -eq "$env:COMPUTERNAME\$env:USERNAME" }
     $filter = $group | Select-String -Pattern 'Hyper' | Out-String
 
     return ( $filter.Trim() -ne "")
 }
 
 function Add-DVHyperVGroupToCurrentUser {
-    $hyperVGroupName = Get-DVHyperVLocalGroupName
-    Add-LocalGroupMember -Group $hyperVGroupName -Member $env:USERNAME
+    if ((Get-DVisCurrentUserMemberOfHyperVGroup) -ne $true) {
+        $hyperVGroupName = Get-DVHyperVLocalGroupName
+        Add-LocalGroupMember -Group "$hyperVGroupName" -Member $env:USERNAME
+    }
 }
 
 function Test-DVAdministrator {  
