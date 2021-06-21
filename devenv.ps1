@@ -67,7 +67,7 @@ function Test-DVAdministrator {
 function Initialize-DVFolders {
     New-Item -Path "$root" -Name ".devenv" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "bin\packer" -ItemType "directory" -Force | Out-Null
-    New-Item -Path "$fullPath" -Name "vm\template\http" -ItemType "directory" -Force | Out-Null
+    New-Item -Path "$fullPath" -Name "vm\template" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "vm\base" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "temp" -ItemType "directory" -Force | Out-Null
 }
@@ -195,28 +195,6 @@ build {
     $packerTemplate | Out-File $outFile -Encoding ascii
     ConvertTo-UnixtextFile -fileName $outFile
 
-    $htmlAnswer = @"
-KEYMAPOPTS="us us"
-HOSTNAMEOPTS="-n alpine36"
-INTERFACESOPTS="auto lo
-iface lo inet loopback
-
-auto eth0
-iface eth0 inet dhcp
-    hostname alpine36
-"
-DNSOPTS="-d local -n 8.8.8.8 8.8.4.4"
-TIMEZONEOPTS="-z UTC"
-PROXYOPTS="none"
-APKREPOSOPTS="http://dl-cdn.alpinelinux.org/alpine/v3.6/main"
-SSHDOPTS="-c openssh"
-NTPOPTS="-c openntpd"
-DISKOPTS="-s 0 -m sys /dev/sda"
-"@
-    $outFile = $fullPath + "\vm\template\http\answers"
-    $htmlAnswer | Out-File $outFile -Encoding ascii
-    ConvertTo-UnixtextFile -fileName $outFile
-
     $addUserSh = @"
 #!/bin/sh
 
@@ -254,41 +232,6 @@ echo "http://dl-cdn.alpinelinux.org/alpine/v3.6/community" >> /etc/apk/repositor
 
 apk update && apk upgrade
 
-# Pre-reqs for WALinuxAgent
-apk add openssl sudo bash shadow parted iptables sfdisk
-apk add python py-setuptools
-
-# Install WALinuxAgent
-wget https://github.com/Azure/WALinuxAgent/archive/v2.2.19.tar.gz && \
-tar xvzf v2.2.19.tar.gz && \
-cd WALinuxAgent-2.2.19 && \
-python setup.py install && \
-cd .. && \
-rm -rf WALinuxAgent-2.2.19 v2.2.19.tar.gz
-
-# Update boot params
-sed -i 's/^default_kernel_opts="[^"]*/\0 console=ttyS0 earlyprintk=ttyS0 rootdelay=300/' /etc/update-extlinux.conf
-update-extlinux
-
-# sshd configuration
-sed -i 's/^#ClientAliveInterval 0/ClientAliveInterval 180/' /etc/ssh/sshd_config
-
-# Start waagent at boot
-cat > /etc/init.d/waagent <<EOF
-#!/sbin/openrc-run  
-                                                               
-export PATH=/usr/local/sbin:`$PATH
-
-start() {                                                                          
-        ebegin "Starting waagent"                                                  
-        start-stop-daemon --start --exec /usr/sbin/waagent --name waagent -- -start
-        eend `$? "Failed to start waagent"                                          
-}
-EOF
-
-chmod +x /etc/init.d/waagent
-rc-update add waagent default
-
 # Workaround for default password
 # Basically, useradd on Alpine locks the account by default if no password
 # was given, and the user can't login, even via ssh public keys. The useradd.sh script
@@ -306,6 +249,11 @@ chmod +x /usr/local/sbin/useradd
 }
 
 function Start-DVPackerBuild {
+    $vmVhdPath = $fullPath + "\vm\base\Virtual Hard Disks\packer-base_box.vhdx"
+    $vhdExists = Test-Path -Path "$vmVhdPath" -PathType Leaf
+    if ($vhdExists) {
+        return
+    }
     $packer = $fullPath + "\bin\packer\packer.exe"
     $workDir = $fullPath + "\vm\base"
     $vmtemplate = $fullPath + "\vm\template\vm.pkr.hcl"
@@ -331,3 +279,4 @@ Initialize-DVFolders
 Get-DVPacker
 Get-DVPackerTemplate
 Start-DVPackerBuild
+Write-Output "iniciou"
