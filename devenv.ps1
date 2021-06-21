@@ -43,6 +43,11 @@ function Get-DVisCurrentUserMemberOfHyperVGroup {
 
     $group = Get-LocalGroup | Where-Object { (Get-LocalGroupMember $_).name -eq "$env:COMPUTERNAME\$env:USERNAME" }
     $filter = $group | Select-String -Pattern 'Hyper' | Out-String
+	
+    if ($filter.Trim() -eq "") {
+        $group = Get-LocalGroup | Where-Object { (Get-LocalGroupMember $_).name -eq "$env:USERDOMAIN\$env:USERNAME" }
+        $filter = $group | Select-String -Pattern 'Hyper' | Out-String        
+    }
 
     return ( $filter.Trim() -ne "")
 }
@@ -108,7 +113,47 @@ function Get-DVPackerTemplate {
     $provisionPath = $fullPath + "\vm\template\provision.sh"
     $packerTemplate = @"
 source "hyperv-iso" "base_box" {
-  boot_command       = ["root<enter><wait>", "ifconfig eth0 up && udhcpc -i eth0<enter><wait10>", "wget http://{{ .HTTPIP }}:{{ .HTTPPort }}/answers<enter><wait>", "setup-alpine -f answers<enter><wait5>", "alpine<enter><wait>", "alpine<enter><wait>", "<wait10><wait10><wait10>", "y<enter>", "<wait10><wait10><wait10>", "<wait10><wait10><wait10>", "rc-service sshd stop<enter>", "mount /dev/sda3 /mnt<enter>", "echo 'PermitRootLogin yes' >> /mnt/etc/ssh/sshd_config<enter>", "umount /mnt<enter>", "eject -s /dev/cdrom<enter>", "reboot<enter>", "<wait10><wait10><wait10>", "root<enter><wait>", "alpine<enter><wait>", "apk add hvtools<enter><wait>", "rc-update add hv_fcopy_daemon default<enter><wait>", "rc-update add hv_kvp_daemon default<enter><wait>", "rc-update add hv_vss_daemon default<enter><wait>", "reboot<enter>"]
+  boot_command       = [
+    "root<enter><wait>", 
+	"ifconfig eth0 up && udhcpc -i eth0<enter><wait10>", 
+	"echo 'KEYMAPOPTS=*us us*' > answers<enter>",
+	"echo 'HOSTNAMEOPTS=*-n alpine36*' >> answers<enter>",
+	"echo 'INTERFACESOPTS=*auto lo' >> answers<enter>",
+	"echo 'iface lo inet loopback' >> answers<enter>",
+	"echo '' >> answers<enter>",
+	"echo 'auto eth0' >> answers<enter>",
+	"echo 'iface eth0 inet dhcp' >> answers<enter>",
+	"echo '    hostname alpine36' >> answers<enter>",
+	"echo '*' >> answers<enter>",
+	"echo 'DNSOPTS=*-d local -n 8.8.8.8 8.8.4.4*' >> answers<enter>",
+	"echo 'TIMEZONEOPTS=*-z UTC*' >> answers<enter>",
+	"echo 'PROXYOPTS=*none*' >> answers<enter>",
+	"echo 'APKREPOSOPTS=*http://dl-cdn.alpinelinux.org/alpine/v3.6/main*' >> answers<enter>",
+	"echo 'SSHDOPTS=*-c openssh*' >> answers<enter>",
+	"echo 'NTPOPTS=*-c openntpd*' >> answers<enter>",
+	"echo 'DISKOPTS=*-s 0 -m sys /dev/sda*' >> answers<enter>",
+	"setup-alpine -f answers<enter><wait5>", 
+	"alpine<enter><wait>", 
+	"alpine<enter><wait>", 
+	"<wait10><wait10><wait10>", 
+	"y<enter>", 
+	"<wait10><wait10><wait10>", 
+	"<wait10><wait10><wait10>", 
+	"rc-service sshd stop<enter>", 
+	"mount /dev/sda3 /mnt<enter>", 
+	"echo 'PermitRootLogin yes' >> /mnt/etc/ssh/sshd_config<enter>", 
+	"umount /mnt<enter>", 
+	"eject -s /dev/cdrom<enter>", 
+	"reboot<enter>", 
+	"<wait10><wait10><wait10>", 
+	"root<enter><wait>", 
+	"alpine<enter><wait>", 
+	"apk add hvtools<enter><wait>", 
+	"rc-update add hv_fcopy_daemon default<enter><wait>", 
+	"rc-update add hv_kvp_daemon default<enter><wait>", 
+	"rc-update add hv_vss_daemon default<enter><wait>", 
+	"reboot<enter>"
+  ]
   boot_wait          = "10s"
   communicator       = "ssh"
   disk_size          = "512"
@@ -145,6 +190,8 @@ build {
     $outFile = $fullPath + "\vm\template\vm.pkr.hcl"
     $pattern = '[\\]'
     $packerTemplate = $packerTemplate -replace $pattern, '\\'
+    $pattern = '[*]'
+    $packerTemplate = $packerTemplate -replace $pattern, '\"'	
     $packerTemplate | Out-File $outFile -Encoding ascii
     ConvertTo-UnixtextFile -fileName $outFile
 
