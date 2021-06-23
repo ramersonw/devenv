@@ -107,45 +107,44 @@ function ConvertTo-UnixtextFile {
 
 function Get-DVPackerTemplate {
 
-    $templateHttpPath = $fullPath + "\vm\template\http"
     $outputVm = $fullPath + "\vm\base"
-    $userAddPath = $fullPath + "\vm\template\useradd.sh"
     $provisionPath = $fullPath + "\vm\template\provision.sh"
+
     $packerTemplate = @"
 source "hyperv-iso" "base_box" {
   boot_command       = [
     "root<enter><wait>", 
-	"ifconfig eth0 up && udhcpc -i eth0<enter><wait10>", 
+	"ifconfig eth0 up && udhcpc -i eth0<enter><wait5>", 
 	"echo 'KEYMAPOPTS=*us us*' > answers<enter>",
-	"echo 'HOSTNAMEOPTS=*-n alpine36*' >> answers<enter>",
+	"echo 'HOSTNAMEOPTS=*-n alpine*' >> answers<enter>",
 	"echo 'INTERFACESOPTS=*auto lo' >> answers<enter>",
 	"echo 'iface lo inet loopback' >> answers<enter>",
 	"echo '' >> answers<enter>",
 	"echo 'auto eth0' >> answers<enter>",
 	"echo 'iface eth0 inet dhcp' >> answers<enter>",
-	"echo '    hostname alpine36' >> answers<enter>",
+	"echo '    hostname alpine' >> answers<enter>",
 	"echo '*' >> answers<enter>",
 	"echo 'DNSOPTS=*-d local -n 8.8.8.8 8.8.4.4*' >> answers<enter>",
 	"echo 'TIMEZONEOPTS=*-z UTC*' >> answers<enter>",
 	"echo 'PROXYOPTS=*none*' >> answers<enter>",
-	"echo 'APKREPOSOPTS=*http://dl-cdn.alpinelinux.org/alpine/v3.6/main*' >> answers<enter>",
+	"echo 'APKREPOSOPTS=*http://dl-cdn.alpinelinux.org/alpine/v3.14/main*' >> answers<enter>",
 	"echo 'SSHDOPTS=*-c openssh*' >> answers<enter>",
-	"echo 'NTPOPTS=*-c openntpd*' >> answers<enter>",
+	"echo 'NTPOPTS=*-c none*' >> answers<enter>",
 	"echo 'DISKOPTS=*-s 0 -m sys /dev/sda*' >> answers<enter>",
 	"setup-alpine -f answers<enter><wait5>", 
 	"alpine<enter><wait>", 
 	"alpine<enter><wait>", 
-	"<wait10><wait10><wait10>", 
+	"<wait5>", 
 	"y<enter>", 
 	"<wait10><wait10><wait10>", 
-	"<wait10><wait10><wait10>", 
+	"<wait10>", 
 	"rc-service sshd stop<enter>", 
-	"mount /dev/sda3 /mnt<enter>", 
+	"mount /dev/sda2 /mnt<enter><wait>", 
 	"echo 'PermitRootLogin yes' >> /mnt/etc/ssh/sshd_config<enter>", 
 	"umount /mnt<enter>", 
 	"eject -s /dev/cdrom<enter>", 
 	"reboot<enter>", 
-	"<wait10><wait10><wait10>", 
+	"<wait10><wait10>", 
 	"root<enter><wait>", 
 	"alpine<enter><wait>", 
 	"apk add hvtools<enter><wait>", 
@@ -159,11 +158,8 @@ source "hyperv-iso" "base_box" {
   disk_size          = "512"
   enable_secure_boot = false
   generation         = 1
-  http_directory     = "$templateHttpPath"
-  http_port_max      = "8080"
-  http_port_min      = "8080"
-  iso_checksum       = "92c80e151143da155fb99611ed8f0f3672fba4de228a85eb5f53bcb261bf4b0a"
-  iso_url            = "http://dl-cdn.alpinelinux.org/alpine/v3.6/releases/x86_64/alpine-virt-3.6.2-x86_64.iso"
+  iso_checksum       = "d568c6c71bb1eee0f65cdf40088daf57032e24f1e3bd2cf8a813f80d2e9e4eab"
+  iso_url            = "https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86_64/alpine-virt-3.14.0-x86_64.iso"
   output_directory   = "$outputVm"
   shutdown_command   = "poweroff"
   skip_compaction    = "true"
@@ -175,11 +171,6 @@ source "hyperv-iso" "base_box" {
 
 build {
   sources = ["source.hyperv-iso.base_box"]
-
-  provisioner "file" {
-    destination = "/tmp/useradd.sh"
-    source      = "$userAddPath"
-  }
 
   provisioner "shell" {
     script = "$provisionPath"
@@ -195,52 +186,11 @@ build {
     $packerTemplate | Out-File $outFile -Encoding ascii
     ConvertTo-UnixtextFile -fileName $outFile
 
-    $addUserSh = @"
-#!/bin/sh
-
-/usr/sbin/useradd $*
-
-# if success...
-if [ `$? == 0 ]; then
-        # was the passwd set in the command?
-        passwd_set=
-        for i in "$@"; do
-                if [ `$i == "-p" -o `$i == "--password" ]; then
-                        passwd_set=0
-                fi
-        done
-        # if the passwd was set, don't mess with it
-        # if no passwd was set, replace the default "!" with "*"
-        # (still invalid password, but the account is not locked for ssh)
-        if [ `$passwd_set ]; then
-                echo "useradd: password was set, doing nothing"
-        else
-                echo "useradd: force default password"
-                for login; do true; done
-                usermod -p "*" `$login
-        fi
-fi
-"@
-
-    $outFile = $fullPath + "\vm\template\useradd.sh"
-    $addUserSh | Out-File $outFile -Encoding ascii
-    ConvertTo-UnixtextFile -fileName $outFile
-
     $provisionSh = @"
 # Community package required for shadow
-echo "http://dl-cdn.alpinelinux.org/alpine/v3.6/community" >> /etc/apk/repositories
+echo "http://dl-cdn.alpinelinux.org/alpine/v3.14/community" >> /etc/apk/repositories
 
 apk update && apk upgrade
-
-# Workaround for default password
-# Basically, useradd on Alpine locks the account by default if no password
-# was given, and the user can't login, even via ssh public keys. The useradd.sh script
-# changes the default password to a non-valid but non-locking string.
-# The useradd.sh script is installed in /usr/local/sbin, which takes precedence
-# by default over /usr/sbin where the real useradd command lives.
-mkdir -p /usr/local/sbin
-mv /tmp/useradd.sh /usr/local/sbin/useradd
-chmod +x /usr/local/sbin/useradd
 "@
 
     $outFile = $fullPath + "\vm\template\provision.sh"
@@ -258,8 +208,6 @@ function Start-DVPackerBuild {
     $workDir = $fullPath + "\vm\base"
     $vmtemplate = $fullPath + "\vm\template\vm.pkr.hcl"
     Start-Process -FilePath $packer -ArgumentList "build", "-force", $vmtemplate  -Wait -NoNewWindow -WorkingDirectory $workDir 
-    #-WindowStyle hidden
-    #-Verb RunAs
 }
 
 
