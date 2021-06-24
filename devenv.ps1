@@ -12,18 +12,27 @@ function Get-DVisHyperVAvailable {
 
     return $result
 }
+
+function Enable-DVOpenSSH {
+    $ssh = Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.C*'
+    if ($ssh.State -ne "Installed") {
+        Add-WindowsCapability -Online -Name $ssh.Name
+    }
+}
 function Enable-DVHyperV {
     Write-Output 'This script will enable Hyper-V features'
     $answer = Read-Host -Prompt 'Your system may reboot. Continue? (Y / N)'
 
     if ($answer.ToUpper() -eq "Y") {
         Add-DVHyperVGroupToCurrentUser
+        Enable-DVOpenSSH
         Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All     
     }
     else {
         Exit 0
     }
 }
+
 function Get-DVHyperVLocalGroupName {
     <#
         .NOTES
@@ -246,6 +255,14 @@ function Import-DVVM {
 
 function Start-DVVm {
     Start-VM -Name (Get-DVVmName)
+    Start-Sleep -s 10
+}
+
+function Get-DVVmIp {
+    $VM = Get-VM -Name (Get-DVVmName)
+    
+    $Adapter = ($VM | Get-VMNetworkAdapter)
+    return $Adapter.IPAddresses[0] 
 }
 
 
@@ -267,4 +284,5 @@ Get-DVPackerTemplate
 Start-DVPackerBuild
 Import-DVVM
 Start-DVVm
+Get-DVVmIp
 Write-Output "iniciou"
