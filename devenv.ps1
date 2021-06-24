@@ -69,6 +69,7 @@ function Initialize-DVFolders {
     New-Item -Path "$fullPath" -Name "bin\packer" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "vm\template" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "vm\base" -ItemType "directory" -Force | Out-Null
+    New-Item -Path "$fullPath" -Name "vm\projects" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "temp" -ItemType "directory" -Force | Out-Null
 }
 
@@ -109,6 +110,7 @@ function Get-DVPackerTemplate {
 
     $outputVm = $fullPath + "\vm\base"
     $provisionPath = $fullPath + "\vm\template\provision.sh"
+    $tempPath = $fullPath + "\temp"
 
     $packerTemplate = @"
 source "hyperv-iso" "base_box" {
@@ -153,20 +155,24 @@ source "hyperv-iso" "base_box" {
 	"rc-update add hv_vss_daemon default<enter><wait>", 
 	"reboot<enter>"
   ]
-  boot_wait          = "10s"
-  communicator       = "ssh"
-  disk_size          = "512"
-  enable_secure_boot = false
-  generation         = 1
-  iso_checksum       = "d568c6c71bb1eee0f65cdf40088daf57032e24f1e3bd2cf8a813f80d2e9e4eab"
-  iso_url            = "https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86_64/alpine-virt-3.14.0-x86_64.iso"
-  output_directory   = "$outputVm"
-  shutdown_command   = "poweroff"
-  skip_compaction    = "true"
-  ssh_password       = "alpine"
-  ssh_username       = "root"
-  switch_name        = "Default Switch"
-  headless           = false
+  boot_wait             = "10s"
+  communicator          = "ssh"
+  disk_size             = 40960
+  disk_block_size       = 1
+  enable_secure_boot    = false
+  enable_dynamic_memory = true
+  generation            = 1
+  cpus                  = 2
+  iso_checksum          = "d568c6c71bb1eee0f65cdf40088daf57032e24f1e3bd2cf8a813f80d2e9e4eab"
+  iso_url               = "https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86_64/alpine-virt-3.14.0-x86_64.iso"
+  output_directory      = "$outputVm"
+  shutdown_command      = "poweroff"
+  skip_compaction       = false
+  ssh_password          = "alpine"
+  ssh_username          = "root"
+  switch_name           = "Default Switch"
+  headless              = false
+  temp_path             = "$tempPath"
 }
 
 build {
@@ -210,6 +216,38 @@ function Start-DVPackerBuild {
     Start-Process -FilePath $packer -ArgumentList "build", "-force", $vmtemplate  -Wait -NoNewWindow -WorkingDirectory $workDir 
 }
 
+function Get-DVVmName {
+    $vmName = Get-Location
+    $pathHash = (Get-FileHash -InputStream ([System.IO.MemoryStream]::New([System.Text.Encoding]::ASCII.GetBytes($vmName.Path)))-Algorithm MD5)
+    return (Split-Path $vmName.Path -Leaf) + $pathHash.Hash    
+}
+
+function Import-DVVM {
+    $vmName = Get-DVVmName
+
+    $registeredVm = get-vm $vmName -ErrorAction SilentlyContinue
+    if ($registeredVm.Name.Trim() -ne "") {
+        return
+    }
+
+    $vmcxPath = $fullPath + '\vm\base\Virtual Machines\*.vmcx'
+    $vmcx = Get-ChildItem "$vmcxPath"
+    if ([int]$vmcx.length -eq 0) {
+        Write-Output "There's no base vm to import"
+        Exit 0        
+    }
+
+    $pathVm = $fullPath + '\vm\base\Virtual Machines\' + $vmcx.Name
+    $vmData = $fullPath + '\vm\projects\' + $vmName
+    $vmHd = $fullPath + "\vm\projects\" + $vmName + "\Virtual Hard Disks"
+    Import-VM -Path "$pathVm" -Copy -GenerateNewId -VirtualMachinePath "$vmData" -VhdDestinationPath "$vmHd" -SnapshotFilePath "$vmData" -SmartPagingFilePath "$vmData"
+    Rename-VM "packer-base_box" -NewName $vmName
+}
+
+function Start-DVVm {
+    Start-VM -Name (Get-DVVmName)
+}
+
 
 $root = $env:USERPROFILE
 $fullPath = $root + "\.devenv"
@@ -227,4 +265,6 @@ Initialize-DVFolders
 Get-DVPacker
 Get-DVPackerTemplate
 Start-DVPackerBuild
+Import-DVVM
+Start-DVVm
 Write-Output "iniciou"
