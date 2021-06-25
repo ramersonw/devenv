@@ -1,15 +1,27 @@
 $ErrorActionPreference = "Stop"
 
+function Add-DVLog {
+    param (
+        $msg
+    )	
+	
+    $msgFormatted = "==> " + $msg
+	
+    Write-Output $msgFormatted
+}
+
 function Get-DVisHyperVAvailable {
 
+    Add-DVLog "Hyper-V is available?"
     $result = $false
     try {
         Get-VM | Out-Null
         $result = $true
     }
     catch {
+        Add-DVLog "false"
     }
-
+    Add-DVLog $result
     return $result
 }
 
@@ -84,11 +96,14 @@ function Initialize-DVFolders {
 }
 
 function Get-DVPacker {
+    Add-DVLog "Getting Packer"
     $packerPath = $fullPath + "\bin\packer\packer.exe"
     $packerExists = Test-Path -Path $packerPath -PathType Leaf
     if ($packerExists) {
+        Add-DVLog "Packer already installed"
         return
     }
+    Add-DVLog "Downloading and installing Packer"
     $PackerRootUrl = 'https://releases.hashicorp.com/packer/'
     $Html = Invoke-RestMethod $PackerRootUrl
     $Pattern = '<a href="/packer/(?<version>.*)/">'
@@ -101,6 +116,7 @@ function Get-DVPacker {
     $destinationPath = $fullPath + "\bin\packer"
     Expand-Archive -Path $destination -DestinationPath $destinationPath
     Remove-Item -Path $destination -Force
+    Add-DVLog "Packer installed"
 }
 
 function ConvertTo-UnixtextFile {
@@ -292,6 +308,7 @@ if (-not(Get-DVisHyperVAvailable)) {
     Exit 0
 }
 
+Add-DVLog "Initializing..."
 Initialize-DVFolders
 Get-DVPacker
 Get-DVPackerTemplate
