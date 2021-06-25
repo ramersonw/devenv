@@ -79,6 +79,7 @@ function Initialize-DVFolders {
     New-Item -Path "$fullPath" -Name "vm\template" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "vm\base" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "vm\projects" -ItemType "directory" -Force | Out-Null
+    New-Item -Path "$fullPath" -Name "vm\sshkey" -ItemType "directory" -Force | Out-Null
     New-Item -Path "$fullPath" -Name "temp" -ItemType "directory" -Force | Out-Null
 }
 
@@ -115,9 +116,14 @@ function ConvertTo-UnixtextFile {
     }
 }
 
-function Get-DVPackerTemplate {
+function Add-DVSshKey {
+    $pathFile = $fullPath + "\vm\sshkey\id_rsa"
+    ssh-keygen.exe -f $pathFile -q -N """"
+}
 
+function Get-DVPackerTemplate {
     $outputVm = $fullPath + "\vm\base"
+    $sshKeyPath = $fullPath + "\vm\sshkey\id_rsa.pub"
     $provisionPath = $fullPath + "\vm\template\provision.sh"
     $tempPath = $fullPath + "\temp"
 
@@ -187,6 +193,11 @@ source "hyperv-iso" "base_box" {
 build {
   sources = ["source.hyperv-iso.base_box"]
 
+  provisioner "file" {
+    destination = "/tmp/id_rsa.pub"
+    source      = "$sshKeyPath"
+  }
+  
   provisioner "shell" {
     script = "$provisionPath"
   }
@@ -206,6 +217,8 @@ build {
 echo "http://dl-cdn.alpinelinux.org/alpine/v3.14/community" >> /etc/apk/repositories
 
 apk update && apk upgrade
+mkdir -p /root/.ssh
+mv /tmp/id_rsa.pub /root/.ssh/authorized_keys
 "@
 
     $outFile = $fullPath + "\vm\template\provision.sh"
@@ -219,6 +232,7 @@ function Start-DVPackerBuild {
     if ($vhdExists) {
         return
     }
+    Add-DVSshKey
     $packer = $fullPath + "\bin\packer\packer.exe"
     $workDir = $fullPath + "\vm\base"
     $vmtemplate = $fullPath + "\vm\template\vm.pkr.hcl"
@@ -235,7 +249,7 @@ function Import-DVVM {
     $vmName = Get-DVVmName
 
     $registeredVm = get-vm $vmName -ErrorAction SilentlyContinue
-    if ($registeredVm.Name.Trim() -ne "") {
+    if ($null -ne $registeredVm.Name) {
         return
     }
 
